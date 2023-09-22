@@ -1,0 +1,18 @@
+var retour;
+var big_a;
+
+function main(arg) {
+  var i;
+  i = 0;
+  retour = 10;
+  big_a = test(2);
+  // big_a should equal to 65
+  putchar(big_a);
+  putchar(retour);
+}
+
+function test(x){
+  var y;
+  return 53 + retour + x;
+}
+

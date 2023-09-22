@@ -1,0 +1,10 @@
+var retour
+// missing semicolon above
+var espace;
+
+function main(arg) {
+  var i;
+  i = 0;
+  retour = 10;
+  espace = 32;
+}

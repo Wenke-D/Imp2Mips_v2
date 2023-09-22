@@ -1,0 +1,11 @@
+(ocamllex
+ (modules implexer))
+(menhir
+ (modules impparser)
+ (flags --explain --dump)
+ (infer true))
+(executables
+ (names impc impi)
+ (promote (until-clean))
+ (flags ()))
+(env (dev (flags (:standard -w -50))))
