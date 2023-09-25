@@ -196,19 +196,25 @@ let pop reg = lw reg 0 sp @@ addi sp sp 4
 (** Save state of t[0] - t[i] to stack. 
     t[0] will be pushed at last *)
 let save_t i =
-  let rec aux i code =
-    match i with
-    | 0 -> code @@ push (t 0)
-    | i -> aux (i - 1) (code @@ push (t i))
-  in
-  aux i nop
+  if i < 0 then nop
+  else
+    let rec aux i code =
+      match i with
+      | 0 -> code @@ push (t 0)
+      | i -> aux (i - 1) (code @@ push (t i))
+    in
+    aux i (explain (Printf.sprintf "__save %s ~ %s" (t 0) (t i)))
+    @@ explain "__end_save"
 
-(** Restore state of t[0] - t[i] from stack *)
+(** Restore state of t.(0) - t.(i) from stack *)
 let restore_t i =
-  let rec aux j code =
-    if j = i then code @@ pop (t i) else aux (j + 1) (code @@ pop (t j))
-  in
-  aux i nop
+  if i < 0 then nop
+  else
+    let rec aux j code =
+      if j = i then code @@ pop (t i) else aux (j + 1) (code @@ pop (t j))
+    in
+    aux 0 (explain (Printf.sprintf "__restore %s ~ %s" (t 0) (t i)))
+    @@ explain "__end_restore"
 
 (**
    Function producing MIPS code for an IMP function. Function producing MIPS
@@ -275,7 +281,7 @@ let tr_function fdef =
      Function that generate MIPS code for an IMP expression.
      The function takes a parameter an expression [e] and produces a
      sequence of MIPS instructions that evaluates [e] and put the
-     obtained value in register $t0.
+     obtained value in register $t2.
    *)
   let tr_expr e =
     let rec aux i e =
@@ -351,7 +357,7 @@ let tr_function fdef =
               params (nop, 0)
           in
           (* save previous $ti *)
-          ( save_t i
+          ( save_t (i - 1)
             (* codes for evaluate all arguments and put them on the stack  *)
             @@ all_code
             (* Jump to the funtion for execution,
@@ -359,8 +365,10 @@ let tr_function fdef =
             @@ jal f
             (* After return, drop the stack for arguments  *)
             @@ addi sp sp (4 * List.length params)
+            (* move return value to current $ti *)
+            @@ move (t 0) ti
             (* restore previous $ti *)
-            @@ restore_t i,
+            @@ restore_t (i - 1),
             rcparams )
     in
     let code, count = aux 0 e in
@@ -399,7 +407,7 @@ let tr_function fdef =
         code
         (* Move the value of [e] from $ti (where it has been produced)
            to $a0 (where syscall expects it). *)
-        @@ move a0 t0
+        @@ move a0 (t 0)
         (* Syscall number 11: printing an ASCII character. *)
         @@ li v0 11
         @@ syscall
@@ -412,14 +420,14 @@ let tr_function fdef =
           match Hashtbl.find_opt env id with
           (* Local variable, save value in t0 into memory,
              address of memeory local variable is calculated by offset to frame stack *)
-          | Some offset -> sw t0 offset fp
+          | Some offset -> sw (t 0) offset fp
           (* Global variable,
              1. get address
               t1 = &id;
              2. save value
               *(t1+0) = t0
           *)
-          | None -> la t1 id @@ sw t0 0 t1
+          | None -> la t1 id @@ sw (t 0) 0 t1
         in
         let eval_code = tr_expr e in
         eval_code @@ save_code
@@ -432,7 +440,7 @@ let tr_function fdef =
         cond_code
         (* If we got a non-zero value, which is interpreted as [true], jump
            to the code fragment of the "then" branch... *)
-        @@ bnez t0 then_label
+        @@ bnez (t 0) then_label
         (* ... otherwise just fall to the next instruction.
            Hence, we put the code of the "else" branch just here. *)
         @@ tr_seq s2
@@ -464,7 +472,7 @@ let tr_function fdef =
         @@ test_code
         (* If the condition is non-zero, jumps back to the beginning of the loop
            body. *)
-        @@ bnez t0 code_label
+        @@ bnez (t 0) code_label
     (* Otherwise, fall to the next instruction, which in this case is the
        instruction that immediately follows the loop. *)
     (* Note: without the instruction [b test_label] at the beginning, we get
@@ -473,7 +481,7 @@ let tr_function fdef =
     (* Function termination. *)
     | Return e ->
         let eval_code =
-          (* Evaluate the value to be returned, in $ti *)
+          (* Evaluate the value to be returned, in $t.(0) *)
           tr_expr e
         in
         eval_code

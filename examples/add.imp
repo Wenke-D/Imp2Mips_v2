@@ -5,7 +5,7 @@ function main(arg) {
   var i;
   i = 0;
   retour = 10;
-  big_a = test(2);
+  big_a = test(2)+8+9;
   // big_a should equal to 65
   putchar(big_a);
   putchar(retour);
