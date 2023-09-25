@@ -1,5 +1,7 @@
 open Debug
 
+let encode_boolean b = if b then 1 else 0
+
 (**
    Simple translation from IMP to MIPS.
 
@@ -191,6 +193,23 @@ let pop reg = lw reg 0 sp @@ addi sp sp 4
 (* In both cases, the update of $sp guarantees that the next operation on the
    stack will take into account the fact that the stack grew or shrank. *)
 
+(** Save state of t[0] - t[i] to stack. 
+    t[0] will be pushed at last *)
+let save_t i =
+  let rec aux i code =
+    match i with
+    | 0 -> code @@ push (t 0)
+    | i -> aux (i - 1) (code @@ push (t i))
+  in
+  aux i nop
+
+(** Restore state of t[0] - t[i] from stack *)
+let restore_t i =
+  let rec aux j code =
+    if j = i then code @@ pop (t i) else aux (j + 1) (code @@ pop (t j))
+  in
+  aux i nop
+
 (**
    Function producing MIPS code for an IMP function. Function producing MIPS
    code for expressions and instructions will be defined inside.
@@ -258,101 +277,95 @@ let tr_function fdef =
      sequence of MIPS instructions that evaluates [e] and put the
      obtained value in register $t0.
    *)
-  let rec tr_expr e =
-    let all_r = [| t0; t1; t2; t3; t4; t5; t6; t7 |] in
-    (* Evaluate a expression and put the result at register $ti,
-        i is an argument.
-           If i is bigger than 7, abort.
-       Return instruction list of the evaluation and number of register consumed.
-    *)
-    let rec tr_expr_aux (i : int) e =
-      if i > Array.length all_r then
-        raise (Invalid_argument "Not enough register")
-      else
-        let t i = all_r.(i) in
-        match e with
-        (* Case of a constant: load the value in the target register $t0. *)
-        | Cst n -> (li (t i) n, 1)
-        (* Boolean [true] is coded by 1 and boolean [false] by 0. *)
-        | Bool b -> ((if b then li (t i) 1 else li (t i) 0), 1)
-        (* Case of a variable. Look up the identifier in the local environement
-           [env] to know the offset, then read at the obtained offset from the
-           base address $fp. *)
-        | Var id -> (
-            match Hashtbl.find_opt env id with
-            | Some offset -> (lw (t i) offset fp, 1)
-            (* In case the identifier does not appear in [env], we assume we are
-               accessing a global variable. We use the identifier as a label and
-               read at the corresponding address.
-               $ti = &id;
-               $ti = *(0+ti)
-            *)
-            | None -> (la (t i) id @@ lw (t i) 0 (t i), 1))
-        (* Binary operation: use the stack to store intermediate values waiting
-           to be used. *)
-        | Binop (bop, e1, e2) ->
-            let op = match bop with Add -> add | Mul -> mul | Lt -> slt in
-            (* Register Index for e2 *)
-            let rie2 = i + 1 in
-            (* Instruction List for e2, register count for e2 *)
-            let ile2, rce2 =
-              (* Evaluate [e2] *)
-              tr_expr_aux rie2 e2
-            in
-            (* Register Index for e1 *)
-            let rie1 = i + 1 + rce2 in
-            (* Instruction List for e1, register count for e1 *)
-            let ile1, rce1 =
-              (* Evaluate [e1] *)
-              tr_expr_aux rie1 e1
-            in
-
-            (* e2 at $t(i+1),
-               e1 at $t(i+1+e2_r_count),
-               e2_r_count is the number of register comsumed by computing e2;
-            *)
-
-            (* Apply the binary operation
-               1. concat all instr for e1 & e2;
-               2. apply bop, save value at $ti;
-               3. consumed rce2 + rce1 + 1($ti) registers
-            *)
-            (ile2 @@ ile1 @@ op (t i) (t rie2) (t rie1), rce2 + rce1 + 1)
-        (* Function call.
-           Before jumping to the function itself, evaluate all parameters and put
-           their values on the stack, from last to first. *)
-        | Call (f, params) ->
-            (* Evaluate the arguments and pass them on the stack. *)
-            let params_code, rcparam =
-              List.fold_right
-                (fun (* [code] for previous arguments
-                         $t[i] register for this argument evaluation result *)
-                       arg (code, i) ->
-                  (* Instruction List & Register Count for current argument *)
-                  let ilarg, rcarg = tr_expr_aux i arg in
-                  ( (* codes for previous arguments *)
-                    code
-                    (* code for this arg *)
-                    @@ ilarg
-                    (* push result to stack, result at $ti *)
-                    @@ push (t i),
-                    (* all register count comsumed *)
-                    i + rcarg ))
-                params (nop, i)
-            in
-            ( (* codes for evaluate all arguments and put them on the stack  *)
-              params_code
-              (* Jump to the funtion for execution,
-                 save current address to $ra for return *)
-              @@ jal f
-              (* After return, drop the stack for arguments  *)
-              @@ addi sp sp (4 * List.length params),
-              rcparam )
+  let tr_expr e =
+    let rec aux i e =
+      (* Evaluate a expression and put the result at register $ti,
+          i is an argument.
+             If i is bigger than 7, abort.
+         Return instruction list of the evaluation and number of register consumed.
+      *)
+      let ti = Mips.t i in
+      match e with
+      (* Case of a constant: load the value in the target register $t0. *)
+      | Cst n -> (li ti n, 1)
+      (* Boolean [true] is coded by 1 and boolean [false] by 0. *)
+      | Bool b -> (li ti (encode_boolean b), 1)
+      (* Case of a variable. Look up the identifier in the local environement
+         [env] to know the offset, then read at the obtained offset from the
+         base address $fp. *)
+      | Var id -> (
+          match Hashtbl.find_opt env id with
+          | Some offset -> (lw ti offset fp, 1)
+          (* In case the identifier does not appear in [env], we assume we are
+             accessing a global variable. We use the identifier as a label and
+             read at the corresponding address.
+             $ti = &id;
+             $ti = *(0+ti)
+          *)
+          | None -> (la ti id @@ lw ti 0 ti, 1))
+      (* Binary operation: use the stack to store intermediate values waiting
+         to be used. *)
+      | Binop (bop, e1, e2) ->
+          let op = match bop with Add -> add | Mul -> mul | Lt -> slt in
+          (* Register Index for e2 *)
+          let ri_e2 = i in
+          (* Instruction List for e2, Consumed Register Number by e2 *)
+          let il_e2, crn_e2 =
+            (* Evaluate [e2] *)
+            aux ri_e2 e2
+          in
+          (* Register Index for e1 *)
+          let ri_e1 = ri_e2 + crn_e2 in
+          (* Instruction List for e1, register count for e1 *)
+          let il_e1, crn_e1 =
+            (* Evaluate [e1] *)
+            aux ri_e1 e1
+          in
+          (* Apply the binary operation
+             1. concat all evaluation instructions for e1 & e2;
+             2. apply bop, save value at $ti;
+             3. this consumes the sum of e1 and e2 consumed registers numbers.
+          *)
+          (il_e2 @@ il_e1 @@ op ti (t ri_e2) (t ri_e1), crn_e2 + crn_e1)
+      (* Function call.
+         Before jumping to the function itself, evaluate all parameters and put
+         their values on the stack, from last to first. *)
+      | Call (f, params) ->
+          (* Evaluate the arguments and pass them on the stack. *)
+          let all_code, rcparams =
+            List.fold_right
+              (fun (* [code] for previous arguments
+                       $t[i] register for this argument evaluation result *)
+                     arg (previous_code, consumed_sum) ->
+                (* Instruction List & Register Count for current argument *)
+                let ri = consumed_sum + i in
+                let il_arg, rc_arg = aux ri arg in
+                ( (* codes for previous arguments *)
+                  previous_code
+                  (* code for this arg *)
+                  @@ il_arg
+                  (* push result to stack, result at $ti *)
+                  @@ push (t i),
+                  (* all register count comsumed *)
+                  consumed_sum + rc_arg ))
+              params (nop, 0)
+          in
+          (* save previous $ti *)
+          ( save_t i
+            (* codes for evaluate all arguments and put them on the stack  *)
+            @@ all_code
+            (* Jump to the funtion for execution,
+               save current address to $ra for return *)
+            @@ jal f
+            (* After return, drop the stack for arguments  *)
+            @@ addi sp sp (4 * List.length params)
+            (* restore previous $ti *)
+            @@ restore_t i,
+            rcparams )
     in
-    let codes, _ = tr_expr_aux 0 e in
-    codes
+    let code, count = aux 0 e in
+    code
   in
-
   (*
      Auxiliary function for producing unique labels, for use in the
      translation of control structures (if and while).
@@ -366,44 +379,57 @@ let tr_function fdef =
 
   (*
      Functions that generate MIPS code for an instruction or a sequence.
+     Registers for evaluation is the same for each instruction.
    *)
-  let rec tr_seq = function
+  let rec tr_seq seq =
+    match seq with
     | [] -> nop
     | [ i ] -> tr_instr i
     (* If an IMP sequence contains several instructions, concatenate the
        MIPS sequences for each in order. *)
     | i :: s -> tr_instr i @@ tr_seq s
-  and tr_instr = function
+  and tr_instr instr =
+    match instr with
     (* Prints a char. *)
     | Putchar e ->
-        (* Evaluate expression [e] *)
-        tr_expr e
-        (* Move the value of [e] from $t0 (where it has been produced)
+        let code =
+          (* Evaluate expression [e] to $ti *)
+          tr_expr e
+        in
+        code
+        (* Move the value of [e] from $ti (where it has been produced)
            to $a0 (where syscall expects it). *)
         @@ move a0 t0
         (* Syscall number 11: printing an ASCII character. *)
         @@ li v0 11
         @@ syscall
     (* Assignment.
-       After evaluation of [e], its value is in $t0.
+       After evaluation of [e], its value is in $ti.
        Chose the right instruction to update memory depending on the
        local or global nature of the variable [id]. *)
     | Set (id, e) ->
-        let set_code =
+        let save_code =
           match Hashtbl.find_opt env id with
           (* Local variable, save value in t0 into memory,
              address of memeory local variable is calculated by offset to frame stack *)
           | Some offset -> sw t0 offset fp
-          (* Global variable, t1 = &id; *(t1+0) = t0  *)
+          (* Global variable,
+             1. get address
+              t1 = &id;
+             2. save value
+              *(t1+0) = t0
+          *)
           | None -> la t1 id @@ sw t0 0 t1
         in
-        tr_expr e @@ set_code
+        let eval_code = tr_expr e in
+        eval_code @@ save_code
     (* Conditional *)
     | If (c, s1, s2) ->
         (* Create two labels that will serve as targets for jumps. *)
         let then_label = new_label () and end_label = new_label () in
         (* Evaluate the condition [c] *)
-        tr_expr c
+        let cond_code = tr_expr c in
+        cond_code
         (* If we got a non-zero value, which is interpreted as [true], jump
            to the code fragment of the "then" branch... *)
         @@ bnez t0 then_label
@@ -424,6 +450,7 @@ let tr_function fdef =
         @@ label end_label
     (* Loop *)
     | While (c, s) ->
+        let test_code = tr_expr c in
         (* Create two labels for jumps. *)
         let test_label = new_label () and code_label = new_label () in
         (* First instruction: jump to the code that evaluates the condition. *)
@@ -434,7 +461,7 @@ let tr_function fdef =
         (* At the end of a pass through the loop, just fall to the evaluation of
            the condition, that determines whether the loop is executed again. *)
         @@ label test_label
-        @@ tr_expr c
+        @@ test_code
         (* If the condition is non-zero, jumps back to the beginning of the loop
            body. *)
         @@ bnez t0 code_label
@@ -445,8 +472,11 @@ let tr_function fdef =
 
     (* Function termination. *)
     | Return e ->
-        (* Evaluate the value to be returned, in $t0 *)
-        tr_expr e
+        let eval_code =
+          (* Evaluate the value to be returned, in $ti *)
+          tr_expr e
+        in
+        eval_code
         (* Deallocate the part of the stack used for local variables.
            move sp to fp -4 to get saved $ra and $fp *)
         @@ addi sp fp (-4)
@@ -459,7 +489,9 @@ let tr_function fdef =
     (* Expression used as an instruction.
        Note that the produced MIPS code writes a value in $t0, but
        this value will not be used. *)
-    | Expr e -> tr_expr e
+    | Expr e ->
+        let code = tr_expr e in
+        code
   in
 
   (*
