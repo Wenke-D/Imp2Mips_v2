@@ -18,7 +18,7 @@ let t6 : register = "$t6"
 let t7 : register = "$t7"
 let t8 : register = "$t8"
 let t9 : register = "$t9"
-let expression_registers = [| t1; t2; t3; t4; t5; t6; t7 |]
+let expression_registers = [| t2; t3; t4; t5; t6; t7 |]
 
 let t i =
   if i > Array.length expression_registers then
