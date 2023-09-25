@@ -1,1 +1,6 @@
 _build
+
+examples/*.asm
+*.exe
+
+.DS_Store
