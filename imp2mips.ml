@@ -191,9 +191,6 @@ let pop reg = lw reg 0 sp @@ addi sp sp 4
 (* In both cases, the update of $sp guarantees that the next operation on the
    stack will take into account the fact that the stack grew or shrank. *)
 
-(** Expression Evaluation result, at stack or register count consumed *)
-type 'a evaluation_result = Stack of 'a asm | Register of 'a asm * int
-
 (**
    Function producing MIPS code for an IMP function. Function producing MIPS
    code for expressions and instructions will be defined inside.
@@ -262,113 +259,95 @@ let tr_function fdef =
      obtained value in register $t0.
    *)
   let rec tr_expr e =
-    let all_r = [| t1; t2; t3; t4; t5; t6; t7 |] in
+    let all_r = [| t0; t1; t2; t3; t4; t5; t6; t7 |] in
     (* Evaluate a expression and put the result at register $ti,
-       i ranges from 0 to 6.
-       if registers are not enough, use stack to save value.
-       $t0 will be messed up to save intermediare value.
-
+        i is an argument.
+           If i is bigger than 7, abort.
        Return instruction list of the evaluation and number of register consumed.
     *)
     let rec tr_expr_aux (i : int) e =
-      let register_available = i + 1 < Array.length all_r in
-      let t index = all_r.(index) in
-      let save_from_immediate value =
-        if not register_available then Stack (li t0 value @@ push t0)
-        else Register (li (t i) value, 1)
-      in
-      match e with
-      (* Case of a constant: load the value in the target register $t0. *)
-      | Cst n -> save_from_immediate n
-      (* Boolean [true] is coded by 1 and boolean [false] by 0. *)
-      | Bool b ->
-          let encoded = if b then 1 else 0 in
-          save_from_immediate encoded
-      (* Case of a variable. Look up the identifier in the local environement
-         [env] to know the offset, then read at the obtained offset from the
-         base address $fp. *)
-      | Var id -> (
-          match Hashtbl.find_opt env id with
-          | Some offset ->
-              (* (if register_available then
-                   (* use $ti to save the value *)
-                   Register (lw (t i) offset fp, 1)
-                 else Stack (lw t0 offset fp @@ push t0)) *)
-              todo "load value from local var"
-          (* In case the identifier does not appear in [env], we assume we are
-             accessing a global variable. We use the identifier as a label and
-             read at the corresponding address.
-             $ti = &id;
-             $ti = *(0+ti)
-          *)
-          | None ->
-              (* (if register_available then
-                   Register(la (t i) id @@ lw (t i) 0 (t i), 1)
-                 else Stack(la t0 id @@ lw t0 0 t0 @@ push t0) *)
-              todo "load value from global var")
-      (* Binary operation: use the stack to store intermediate values waiting
-         to be used. *)
-      | Binop (bop, e1, e2) ->
-          let op = match bop with Add -> add | Mul -> mul | Lt -> slt in
-          (* Register Index for e2 *)
-          let rie2 = i + 1 in
-          let res_e2 =
-            (* Evaluate [e2] *)
-            tr_expr_aux rie2 e2
-          in
-          (* Register Index for e1 *)
-          let rie1 =
-            match res_e2 with Stack _ -> i | Register (_, n) -> i + n
-          in
-          let res_e1 =
-            (* Evaluate [e1] *)
-            tr_expr_aux rie1 e1
-          in
+      if i > Array.length all_r then
+        raise (Invalid_argument "Not enough register")
+      else
+        let t i = all_r.(i) in
+        match e with
+        (* Case of a constant: load the value in the target register $t0. *)
+        | Cst n -> (li (t i) n, 1)
+        (* Boolean [true] is coded by 1 and boolean [false] by 0. *)
+        | Bool b -> ((if b then li (t i) 1 else li (t i) 0), 1)
+        (* Case of a variable. Look up the identifier in the local environement
+           [env] to know the offset, then read at the obtained offset from the
+           base address $fp. *)
+        | Var id -> (
+            match Hashtbl.find_opt env id with
+            | Some offset -> (lw (t i) offset fp, 1)
+            (* In case the identifier does not appear in [env], we assume we are
+               accessing a global variable. We use the identifier as a label and
+               read at the corresponding address.
+               $ti = &id;
+               $ti = *(0+ti)
+            *)
+            | None -> (la (t i) id @@ lw (t i) 0 (t i), 1))
+        (* Binary operation: use the stack to store intermediate values waiting
+           to be used. *)
+        | Binop (bop, e1, e2) ->
+            let op = match bop with Add -> add | Mul -> mul | Lt -> slt in
+            (* Register Index for e2 *)
+            let rie2 = i + 1 in
+            (* Instruction List for e2, register count for e2 *)
+            let ile2, rce2 =
+              (* Evaluate [e2] *)
+              tr_expr_aux rie2 e2
+            in
+            (* Register Index for e1 *)
+            let rie1 = i + 1 + rce2 in
+            (* Instruction List for e1, register count for e1 *)
+            let ile1, rce1 =
+              (* Evaluate [e1] *)
+              tr_expr_aux rie1 e1
+            in
 
-          (* e2 at $t(i+1),
-             e1 at $t(i+1+e2_r_count),
-             e2_r_count is the number of register comsumed by computing e2;
-          *)
+            (* e2 at $t(i+1),
+               e1 at $t(i+1+e2_r_count),
+               e2_r_count is the number of register comsumed by computing e2;
+            *)
 
-          (* Apply the binary operation
-             1. concat all instr for e1 & e2;
-             2. apply bop, save value at $ti;
-             3. consumed rce2 + rce1 + 1($ti) registers
-          *)
-          todo
-            "translate bino, and handle the case where 2 values both in stack"
-      (* (ile2 @@ ile1 @@ op (t i) (t rie2) (t rie1), rce2 + rce1 + 1) *)
-      (* Function call.
-         Before jumping to the function itself, evaluate all parameters and put
-         their values on the stack, from last to first. *)
-      | Call (f, params) ->
-          (* Evaluate the arguments and pass them on the stack. *)
-          let params_code, rcparam =
-            List.fold_right
-              (fun (* [code] for previous arguments
-                       $t[i] register for this argument evaluation result *)
-                     arg (code, i) ->
-                (* Instruction List & Register Count for current argument *)
-                let ilarg, rcarg = tr_expr_aux i arg in
-                ( (* codes for previous arguments *)
-                  code
-                  (* code for this arg *)
-                  @@ ilarg
-                  (* push result to stack, result at $ti *)
-                  @@ push (t i),
-                  (* all register count comsumed *)
-                  i + rcarg ))
-              params (nop, i)
-          in
-          todo "for argument evaluation"
-      (* ( codes for evaluate all arguments and put them on the stack
-         params_code
-         (* Jump to the funtion for execution,
-            save current address to $ra for return *)
-         @@ jal f
-         (* After return, drop the stack for arguments  *)
-         @@ addi sp sp (4 * List.length params),
-         rcparam ) *)
+            (* Apply the binary operation
+               1. concat all instr for e1 & e2;
+               2. apply bop, save value at $ti;
+               3. consumed rce2 + rce1 + 1($ti) registers
+            *)
+            (ile2 @@ ile1 @@ op (t i) (t rie2) (t rie1), rce2 + rce1 + 1)
+        (* Function call.
+           Before jumping to the function itself, evaluate all parameters and put
+           their values on the stack, from last to first. *)
+        | Call (f, params) ->
+            (* Evaluate the arguments and pass them on the stack. *)
+            let params_code, rcparam =
+              List.fold_right
+                (fun (* [code] for previous arguments
+                         $t[i] register for this argument evaluation result *)
+                       arg (code, i) ->
+                  (* Instruction List & Register Count for current argument *)
+                  let ilarg, rcarg = tr_expr_aux i arg in
+                  ( (* codes for previous arguments *)
+                    code
+                    (* code for this arg *)
+                    @@ ilarg
+                    (* push result to stack, result at $ti *)
+                    @@ push (t i),
+                    (* all register count comsumed *)
+                    i + rcarg ))
+                params (nop, i)
+            in
+            ( (* codes for evaluate all arguments and put them on the stack  *)
+              params_code
+              (* Jump to the funtion for execution,
+                 save current address to $ra for return *)
+              @@ jal f
+              (* After return, drop the stack for arguments  *)
+              @@ addi sp sp (4 * List.length params),
+              rcparam )
     in
     let codes, _ = tr_expr_aux 0 e in
     codes
