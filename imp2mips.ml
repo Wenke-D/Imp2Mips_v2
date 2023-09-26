@@ -185,7 +185,9 @@ open Mips
    We define two auxiliary functions [push] and [pop] generating MIPS code
    for adding or removing an element at the top of the stack.
  *)
-let push reg = subi sp sp 4 @@ sw reg 0 sp
+let push reg =
+  explain (Printf.sprintf "push %s" reg)
+  @@ subi sp sp 4 @@ sw reg 0 sp @@ explain "end_push"
 
 (* Conversely, to retrieve and remove an element from the top of the stack,
    read the value at the address given by $sp, and increment $sp by 4 bytes. *)
@@ -203,8 +205,8 @@ let save_t i =
       | 0 -> code @@ push (t 0)
       | i -> aux (i - 1) (code @@ push (t i))
     in
-    aux i (explain (Printf.sprintf "__save %s ~ %s" (t 0) (t i)))
-    @@ explain "__end_save"
+    aux i (explain (Printf.sprintf "save %s ~ %s" (t 0) (t i)))
+    @@ explain "end_save"
 
 (** Restore state of t.(0) - t.(i) from stack *)
 let restore_t i =
@@ -281,7 +283,7 @@ let tr_function fdef =
      Function that generate MIPS code for an IMP expression.
      The function takes a parameter an expression [e] and produces a
      sequence of MIPS instructions that evaluates [e] and put the
-     obtained value in register $t2.
+     obtained value in register $t.(0).
    *)
   let tr_expr e =
     let rec aux i e =
@@ -344,14 +346,15 @@ let tr_function fdef =
                        $t[i] register for this argument evaluation result *)
                      arg (previous_code, consumed_sum) ->
                 (* Instruction List & Register Count for current argument *)
-                let ri = consumed_sum + i in
+                (* index can begin from 0, because all $t will be saved before evaluate arguments *)
+                let ri = consumed_sum in
                 let il_arg, rc_arg = aux ri arg in
                 ( (* codes for previous arguments *)
                   previous_code
                   (* code for this arg *)
                   @@ il_arg
                   (* push result to stack, result at $ti *)
-                  @@ push (t i),
+                  @@ push (t ri),
                   (* all register count comsumed *)
                   consumed_sum + rc_arg ))
               params (nop, 0)

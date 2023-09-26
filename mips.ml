@@ -153,7 +153,7 @@ let label (s : label) = S (s ^ ":\n")
 let syscall = S "\tsyscall\n"
 
 let comment s = S ("#" ^ s ^ "\n")
-let explain str = comment ("______" ^ str)
+let explain str = comment ("__________" ^ str)
 let asciiz s = ins ".asciiz %S" s
 let dword l = ins ".word %a" pr_ilist l
 let ( @@ ) x y = C (x, y)
