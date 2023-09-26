@@ -24,7 +24,7 @@ let t i =
   let length = Array.length expression_registers in
   if i >= length then
     raise
-      (Invalid_argument
+      (Failure
          (Printf.sprintf
             "Compilation failure: not enough register, indexing %d, length %d."
             i length))
