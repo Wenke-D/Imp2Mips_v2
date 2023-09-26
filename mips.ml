@@ -21,9 +21,13 @@ let t9 : register = "$t9"
 let expression_registers = [| t2; t3; t4; t5; t6; t7 |]
 
 let t i =
-  if i > Array.length expression_registers then
+  let length = Array.length expression_registers in
+  if i >= length then
     raise
-      (Invalid_argument ("Not enough register, indexing " ^ string_of_int i))
+      (Invalid_argument
+         (Printf.sprintf
+            "Compilation failure: not enough register, indexing %d, length %d."
+            i length))
   else expression_registers.(i)
 
 let s0 : register = "$s0"
