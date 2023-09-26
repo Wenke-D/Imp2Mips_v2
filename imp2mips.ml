@@ -191,7 +191,9 @@ let push reg =
 
 (* Conversely, to retrieve and remove an element from the top of the stack,
    read the value at the address given by $sp, and increment $sp by 4 bytes. *)
-let pop reg = lw reg 0 sp @@ addi sp sp 4
+let pop reg =
+  explain (Printf.sprintf "pop %s" reg)
+  @@ lw reg 0 sp @@ addi sp sp 4 @@ explain "end_pop"
 (* In both cases, the update of $sp guarantees that the next operation on the
    stack will take into account the fact that the stack grew or shrank. *)
 
