@@ -2,6 +2,7 @@
 
   open Lexing
   open Imp
+  open CompilationException
 
 %}
 
@@ -29,12 +30,12 @@ program:
 | globals=list(variable_decl) functions=list(function_def) EOF
     { {functions; globals} }
 | error { let pos = $startpos in
-          let message =
-            Printf.sprintf
-              "syntax error at line %d, column %d"
-              pos.pos_lnum (pos.pos_cnum - pos.pos_bol)
-          in
-          failwith message }
+          let p = {
+            line=pos.pos_lnum;
+            column=(pos.pos_cnum - pos.pos_bol)
+          } in
+         raise (CompilationException.SyntaxError p)
+          }
 ;
 
 variable_decl:

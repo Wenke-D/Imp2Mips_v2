@@ -24,10 +24,8 @@ let t i =
   let length = Array.length expression_registers in
   if i >= length then
     raise
-      (Failure
-         (Printf.sprintf
-            "Compilation failure: not enough register, indexing %d, length %d."
-            i length))
+      (CompilationException.CompilationFailure
+         (Printf.sprintf "not enough register, indexing %d, length %d." i length))
   else expression_registers.(i)
 
 let s0 : register = "$s0"
