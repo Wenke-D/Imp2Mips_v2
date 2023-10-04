@@ -15,3 +15,10 @@
  (dev
   (flags
    (:standard -w -50))))
+
+; clear test file output
+
+(rule
+ (alias clean-test)
+ (action
+  (bash "rm -f ../../test/*.asm")))

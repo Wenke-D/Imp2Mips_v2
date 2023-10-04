@@ -1,0 +1,13 @@
+var x;
+var y;
+
+function main() {
+  var res;
+
+  x = 1;
+  y = 2;
+  res = 3 * y + x + y;
+  putchar(48+res);
+  // prints '9'
+}
+
