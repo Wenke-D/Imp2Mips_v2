@@ -185,15 +185,11 @@ open Mips
    We define two auxiliary functions [push] and [pop] generating MIPS code
    for adding or removing an element at the top of the stack.
  *)
-let push reg =
-  explain (Printf.sprintf "push %s" reg)
-  @@ subi sp sp 4 @@ sw reg 0 sp @@ explain "end_push"
+let push reg = subi sp sp 4 @@ sw reg 0 sp
 
 (* Conversely, to retrieve and remove an element from the top of the stack,
    read the value at the address given by $sp, and increment $sp by 4 bytes. *)
-let pop reg =
-  explain (Printf.sprintf "pop %s" reg)
-  @@ lw reg 0 sp @@ addi sp sp 4 @@ explain "end_pop"
+let pop reg = lw reg 0 sp @@ addi sp sp 4
 (* In both cases, the update of $sp guarantees that the next operation on the
    stack will take into account the fact that the stack grew or shrank. *)
 
@@ -335,7 +331,7 @@ let tr_function fdef =
           (* After return, drop the stack for arguments  *)
           @@ addi sp sp (4 * List.length args)
           (* move return value to current $ti *)
-          @@ move (t 0) t0
+          @@ move t0 (t 0)
           (* restore previous $ti *)
           @@ restore_t i
           (* save value at stack *)
@@ -430,7 +426,7 @@ let tr_function fdef =
           let put_code =
             if is_free i then
               (* move return value to current $ti *)
-              move (t 0) (t i)
+              move (t i) (t 0)
               (* restore previous $ti *)
               @@ restore_t (i - 1)
             else move (t 0) t0 @@ restore_t (i - 1) @@ push t0

@@ -1,0 +1,19 @@
+var x;
+var y;
+
+// with function call, only registers
+
+function main() {
+  var res;
+
+  x = 1;
+  y = 2;
+  res = 3 * y + add(x, y) + 1 + 1 + 1;
+  putchar(45+res);
+  // prints '9'
+}
+
+function add(x, y){
+  return x + y;
+}
+
