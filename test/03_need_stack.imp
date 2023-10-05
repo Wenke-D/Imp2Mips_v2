@@ -8,8 +8,8 @@ function main() {
 
   x = 1;
   y = 2;
-  res = 3 * y + add(x, y) + 1 + 1 + 1;
-  putchar(45+res);
+  res = 3 * y + add(x, y) + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1;
+  putchar(39+res);
   // prints '9'
 }
 

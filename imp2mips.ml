@@ -423,25 +423,27 @@ let tr_function fdef =
                 @@ push (t 0))
               params nop
           in
+          (* code for put result at the proper place, depending on if there are register available *)
           let put_code =
             if is_free i then
               (* move return value to current $ti *)
               move (t i) (t 0)
               (* restore previous $ti *)
               @@ restore_t (i - 1)
-            else move (t 0) t0 @@ restore_t (i - 1) @@ push t0
+            else (* save result to stack *)
+              push (t 0) @@ restore_t (i - 1)
           in
           (* save previous $ti *)
           ( save_t (i - 1)
             (* codes for evaluate all arguments and put them on the stack  *)
             @@ all_code
-            (* Jump to the funtion for execution,
-               save current address to $ra for return *)
+            (* Jump to the funtion for execution *)
             @@ jal f
             (* After return, drop the stack for arguments  *)
             @@ addi sp sp (4 * List.length params)
             (* move return value to current $ti *)
             @@ put_code,
+            (* calculate register consumption *)
             if is_free i then 1 else 0 )
     in
     let code, count = aux 0 e in

@@ -23,19 +23,13 @@ main:
 	sw $t2, 0($t1)
 	la $t2, y
 	lw $t2, 0($t2)
-	subi $sp, $sp, 4
-	sw $t2, 0($sp)
-	la $t2, x
-	lw $t2, 0($t2)
-	subi $sp, $sp, 4
-	sw $t2, 0($sp)
-	jal add
-	addi $sp, $sp, 8
-	move $t2, $t2
-	la $t3, y
+	la $t3, x
 	lw $t3, 0($t3)
-	li $t4, 3
-	mul $t3, $t3, $t4
+	la $t4, y
+	lw $t4, 0($t4)
+	li $t5, 3
+	mul $t4, $t4, $t5
+	add $t3, $t3, $t4
 	add $t2, $t2, $t3
 	sw $t2, -8($fp)
 	lw $t2, -8($fp)
@@ -44,29 +38,6 @@ main:
 	move $a0, $t2
 	li $v0, 11
 	syscall
-	li $t0, 0
-	addi $sp, $fp, -4
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
-	lw $fp, 0($sp)
-	addi $sp, $sp, 4
-	jr $ra
-add:
-	subi $sp, $sp, 4
-	sw $fp, 0($sp)
-	subi $sp, $sp, 4
-	sw $ra, 0($sp)
-	addi $fp, $sp, 4
-	addi $sp, $sp, 0
-	lw $t2, 8($fp)
-	lw $t3, 4($fp)
-	add $t2, $t2, $t3
-	addi $sp, $fp, -4
-	lw $ra, 0($sp)
-	addi $sp, $sp, 4
-	lw $fp, 0($sp)
-	addi $sp, $sp, 4
-	jr $ra
 	li $t0, 0
 	addi $sp, $fp, -4
 	lw $ra, 0($sp)
