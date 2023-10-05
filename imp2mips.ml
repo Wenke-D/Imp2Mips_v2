@@ -450,8 +450,7 @@ let tr_function fdef =
     code
   in
   (*
-     Auxiliary function for producing unique labels, for use in the
-     translation of control structures (if and while).
+     for producing unique labels
    *)
   let new_label =
     let cpt = ref (-1) in
@@ -461,7 +460,8 @@ let tr_function fdef =
   in
 
   (*
-     Functions that generate MIPS code for an instruction or a sequence.
+     Generate MIPS code for an instruction or a sequence.
+
      Registers for evaluation is the same for each instruction.
    *)
   let rec tr_seq seq =
@@ -493,15 +493,7 @@ let tr_function fdef =
     | Set (id, e) ->
         let save_code =
           match Hashtbl.find_opt env id with
-          (* Local variable, save value in t0 into memory,
-             address of memeory local variable is calculated by offset to frame stack *)
           | Some offset -> sw (t 0) offset fp
-          (* Global variable,
-             1. get address
-              t1 = &id;
-             2. save value
-              *(t1+0) = t0
-          *)
           | None -> la t1 id @@ sw (t 0) 0 t1
         in
         let eval_code = tr_expr e in
@@ -524,13 +516,7 @@ let tr_function fdef =
         @@ b end_label
         (* Code for the "then" branch. *)
         @@ label then_label
-        @@ tr_seq s1
-        (* At the end of the "then" branch, there is no need to jump, since we
-           are precisely at the end of the conditional. Just put here the
-           final label, without any explicitly associated instruction (it will
-           be associated to the instruction that immadiately follows the
-           conditional). *)
-        @@ label end_label
+        @@ tr_seq s1 @@ label end_label
     (* Loop *)
     | While (c, s) ->
         let test_code = tr_expr c in
@@ -560,8 +546,7 @@ let tr_function fdef =
           tr_expr e
         in
         eval_code
-        (* Deallocate the part of the stack used for local variables.
-           move sp to fp -4 to get saved $ra and $fp *)
+        (* Deallocate the stack used for local variables. *)
         @@ addi sp fp (-4)
         (* Retrieve the return address *)
         @@ pop ra
@@ -569,9 +554,6 @@ let tr_function fdef =
         @@ pop fp
         (* Jumps back to the caller *)
         @@ jr ra
-    (* Expression used as an instruction.
-       Note that the produced MIPS code writes a value in $t0, but
-       this value will not be used. *)
     | Expr e ->
         let code = tr_expr e in
         code
